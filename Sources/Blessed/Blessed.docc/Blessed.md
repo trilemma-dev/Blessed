@@ -81,7 +81,7 @@ reference is bound to its containing `Authorization` instance.
 
 The exceptions to this are:
  - reading or existence checking a right definition in the Policy Database
- - enable or disabling a login item
+ - enabling or disabling a login item
 
 If you need to determine at run time if your app is sandboxed, this framework exposes an extension on
 [`NSApplication`](https://developer.apple.com/documentation/appkit/nsapplication):

@@ -9,7 +9,7 @@ try LaunchdManager.authorizeAndBless(message: message, icon: icon)
 
 Both the `message` and `icon` parameters are optional. Defaults will be provided by macOS if they are not specified.
 
-# Overview
+## Overview
 Beyond making it easy to bless an executable, Blessed provides a complete Swift implementation of the non-deprecated
 portions of macOS's [Authorization Services](https://developer.apple.com/documentation/security/authorization_services)
 and [Service Management](https://developer.apple.com/documentation/servicemanagement)
@@ -20,6 +20,16 @@ frameworks. At a high level this framework exposes three closely related capabil
 
 For completeness the Service Management capability to enable and disable login items via `launchd` is also included; see
 `LaunchdManager.enableLoginItem(forBundleIdentifier:)` and `LaunchdManager.disableLoginItem(forBundleIdentifier:)`.
+
+## Authorization
+In some more advanced circumstances you may to want directly interact with macOS's Security Server via the
+`Authorization` class.
+
+If you only need to check if a user can perform an operation, use `checkRights(_:environment:options:)`
+without needing to create an `Authorization` instance.
+
+Otherwise you'll typically want to initialize an instance via `init()` and then subsequently request
+rights with `requestRights(_:environment:options:)` or  `requestRightsAsync(_:environment:options:callback:)`.
 
 ## Defining Custom Rights
 macOS's authorization system is built around the concept of rights. The Policy Database contains definitions for all
@@ -49,22 +59,12 @@ If you need to create a rule which is not solely composed of already existing ru
 plug-in, which is not covered by this framework. See [Using Authorization Plug-ins](https://developer.apple.com/documentation/security/authorization_plug-ins/using_authorization_plug-ins)
 for more information.
 
-## Authorization
-In some more advanced circumstances you may to want directly interact with macOS's Security Server via the
-`Authorization` class.
-
-If you only need to check if a user can perform an operation, use `checkRights(_:environment:options:)`
-without needing to create an `Authorization` instance.
-
-Otherwise you'll typically want to initialize an instance via `init()` and then subsequently request
-rights with `requestRights(_:environment:options:)` or  `requestRightsAsync(_:environment:options:callback:)`.
-
 ## Sandboxing
 Most of this framework is *not* available to sandboxed apps because of privilege escalation.
 
 The exceptions to this are:
  - reading or existence checking a right definition in the Policy Database
- - enable or disabling a login item
+ - enabling or disabling a login item
 
 If you need to determine at run time if your app is sandboxed, this framework exposes an extension on `NSApplication`:
 ```swift
