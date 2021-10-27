@@ -9,6 +9,9 @@ try LaunchdManager.authorizeAndBless(message: message, icon: icon)
 
 Both the `message` and `icon` parameters are optional. Defaults will be provided by macOS if they are not specified.
 
+To see a runnable sample app using this framework, check out
+[SwiftAuthorizationSample](https://github.com/trilemma-dev/SwiftAuthorizationSample).
+
 ## Overview
 Beyond making it easy to bless an executable, Blessed provides a complete Swift implementation of the non-deprecated
 portions of macOS's [Authorization Services](https://developer.apple.com/documentation/security/authorization_services)
