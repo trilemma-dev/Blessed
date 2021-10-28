@@ -12,6 +12,8 @@ Both the `message` and `icon` parameters are optional. Defaults will be provided
 To see a runnable sample app using this framework, check out
 [SwiftAuthorizationSample](https://github.com/trilemma-dev/SwiftAuthorizationSample).
 
+[![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Ftrilemma-dev%2FBlessed%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/trilemma-dev/Blessed)
+
 ## Overview
 Beyond making it easy to bless an executable, Blessed provides a complete Swift implementation of the non-deprecated
 portions of macOS's [Authorization Services](https://developer.apple.com/documentation/security/authorization_services)
