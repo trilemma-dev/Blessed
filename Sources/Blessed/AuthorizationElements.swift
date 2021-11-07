@@ -190,18 +190,18 @@ public struct AuthorizationEnvironmentEntry: AuthorizationElement, Hashable {
 
 /// Information about an ``Authorization``.
 ///
-/// This struct cannot be initialized, it is returned by ``Authorization/retrieveInfo(tag:)``.
-struct AuthorizationInfo: AuthorizationElement {
+/// Package internal struct used by ``Authorization/retrieveInfo(tag:)``.
+internal struct AuthorizationInfo: AuthorizationElement {
     /// The name of this info.
-    public let name: String
+    let name: String
     /// The value asociated with this info.
     ///
     /// The specific format of this value can differ for each `AuthorizationInfo` instance, but in practice is commonly a UTF8 encoded C string.
-    public let value: ContiguousArray<CChar>
-    /// In practice this never appears to be used and so is not exposed.
-    internal let flags: UInt32
+    let value: ContiguousArray<CChar>
+    /// In practice this never appears to be used.
+    let flags: UInt32
     
-    internal init(name: String, value: ContiguousArray<CChar>, flags: UInt32) {
+    init(name: String, value: ContiguousArray<CChar>, flags: UInt32) {
         self.name = name
         self.value = value
         self.flags = flags
@@ -265,18 +265,16 @@ internal extension AuthorizationItem {
             }
         }
         
-        return T.init(name: name, value: value, flags: self.flags)
+        return T(name: name, value: value, flags: self.flags)
     }
 }
 
 internal extension AuthorizationItemSet {
     func wrap<T>(type: T.Type) -> [T] where T:AuthorizationElement {
         var items = [T]()
-        if self.count > 0 {
-            for index in 0...Int(self.count) - 1 {
-                if let item = self.items?.advanced(by: index).pointee {
-                    items.append(item.wrap(type: type))
-                }
+        for index in 0..<Int(self.count) {
+            if let item = self.items?.advanced(by: index).pointee {
+                items.append(item.wrap(type: type))
             }
         }
         

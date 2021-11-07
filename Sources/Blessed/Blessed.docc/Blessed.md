@@ -11,12 +11,12 @@ frameworks is provided along with additional convenience functions. At a high le
 related capabilities:
 1. Requesting a user grant permission for one or more rights via macOS's Security Server
 2. Defining custom rights in the Policy Database
-3. Using `launchd` to install executables which will run with root privileges
+3. Using `launchd` to install helper tool executables which will run with root privileges
 
 For completeness the Service Management capability to enable and disable login items via `launchd` is also included; see
 ``LaunchdManager/enableLoginItem(forBundleIdentifier:)`` and ``LaunchdManager/disableLoginItem(forBundleIdentifier:)``.
 
-## Installing a Root Privileged Executable
+## Installing a Root Privileged Helper Tool
 Because in practice #1 is so often done in order to perform #3, this framework provides the
 ``LaunchdManager/authorizeAndBless(message:icon:)`` function which combines both into just one call:
 ```swift
@@ -28,8 +28,8 @@ try LaunchdManager.authorizeAndBless(message: message, icon: icon)
 Both the `message` and `icon` parameters are optional. Defaults will be provided by macOS if they are not specified.
 
 ## Defining Custom Rights
-macOS's authorization system is built around the concept of rights. The Policy Database contains definitions for all
-of the rights on the system and your application can add its own.
+macOS's authorization system is built around the concept of rights. The Policy Database contains definitions for all of
+the rights on the system and your application can add its own.
 
 If an application defines its own rights it can then use these to self-restrict functionality. For details on *why* you
 might want to do see, consider reading Apple's [Technical Note TN2095: Authorization for Everyone](https://developer.apple.com/library/archive/technotes/tn2095/_index.html#//apple_ref/doc/uid/DTS10003110)
@@ -43,11 +43,11 @@ let rules: Set<AuthorizationRightRule> = [CannedAuthorizationRightRules.authenti
 try myCustomRight.createOrUpdateDefinition(rules: rules, descriptionKey: description)
 ```
 
-The above example creates a right called "com.example.MyApp.special-action" which requires that the user authenticate
-as an admin. How exactly the user does so is up to macOS; your application does not concern itself with this. (At the
-time of this documentation being written this means the user needing to type in a password, but in the future Apple
-could for example update their implementation of the `authenticateAsAdmin` rule to use Touch ID.) When the user is asked
-to authenticate they will see the message "MyApp would like to perform a special action."
+The above example creates a right called "com.example.MyApp.special-action" which requires that the user authenticate as
+an admin. How exactly the user does so is up to macOS; your application does not concern itself with this. (At the time
+of this documentation being written this means the user needing to type in a password, but in the future Apple could for
+example update their implementation of the `authenticateAsAdmin` rule to use Touch ID.) When the user is asked to
+authenticate they will see the message "MyApp would like to perform a special action."
 
 There are several optional parameters not used in this example, see 
 ``AuthorizationRight/createOrUpdateDefinition(rules:authorization:descriptionKey:bundle:localeTableName:comment:)`` for
@@ -90,28 +90,20 @@ let sandboxed = try NSApplication.shared.isSandboxed()
 ```
 
 ## Topics
-
 ### Authorization
-
 - ``Authorization``
 - ``AuthorizationRight``
 - ``AuthorizationEnvironmentEntry``
 - ``AuthorizationOption``
-
 ### Authorization Policy Database
-
 - ``AuthorizationRight``
 - ``AuthorizationRightRule``
 - ``CannedAuthorizationRightRules``
 - ``AuthorizationRightDefinition``
 - ``AuthorizationRightDefinitionClass``
 - ``AuthorizationMechanism``
-
 ### Authorization Errors
-
 - ``AuthorizationError``
-
 ### launchd Registration
-
 - ``LaunchdManager``
 - ``LaunchdError``

@@ -13,9 +13,8 @@ import Foundation
 /// deserialized for convenient transference between processes.
 ///
 /// ## Topics
-/// ### Initializers
+/// ### Initializer
 /// - ``init()``
-/// - ``init(rights:environment:options:)``
 ///
 /// ### Rights
 /// - ``requestRights(_:environment:options:)``
@@ -39,58 +38,13 @@ public class Authorization: Codable {
     /// This reference is only valid during the lifetime of its enclosing ``Authorization`` instance's lifetime.
     public let authorizationRef: AuthorizationRef
     
-    /// Creates a new default instance.
+    /// Creates a new instance with no rights.
     ///
-    /// For applications that require a one-time authorization, see ``init(rights:environment:options:)``.
-    public convenience init() throws {
-        try self.init(rights: [], environment: [], options: [])
-    }
-    
-    /// Creates a new customized instance.
-    ///
-    /// Authorizing rights with this initializer is most useful for applications that require a one-time authorization. Otherwise use ``init()`` and make subsequent
-    /// calls to ``requestRights(_:environment:options:)`` or
+    /// To request rights, use ``requestRights(_:environment:options:)`` or
     /// ``requestRightsAsync(_:environment:options:callback:)``.
-    ///
-    /// When ``AuthorizationOption/interactionAllowed`` is provided, user interaction will happen when required. Failing to provide this option will
-    /// result in this initializer throwing ``AuthorizationError/interactionNotAllowed`` when interaction is required.
-    ///
-    /// Providing ``AuthorizationOption/extendRights`` will extend the currently available rights. If this option is provided and initialization
-    /// succeeds then all the rights requested were granted. If this option is not provided the operation will almost certainly succeed, but no attempt will be made to
-    /// make the requested rights available. Call ``Authorization/requestRights(_:environment:options:)`` or
-    /// ``Authorization/requestRightsAsync(_:environment:options:callback:)`` to figure out which of the requested rights were
-    /// granted.
-    ///
-    /// Providing ``AuthorizationOption/partialRights`` will cause this initializer to succeed if only some of the requested rights were granted. Unless
-    /// this option is provided this initializer will throw an error if not all the requested rights could be obtained.
-    ///
-    /// Providing ``AuthorizationOption/preAuthorize`` will preauthorize the requested rights so that at a later time the obtained rights can be used in a
-    /// different process. Rights which can't be preauthorized will be treated as if they were authorized for the sake of throwing an error (in other words if all rights
-    /// are either authorized or could not be preauthorized this initializer will still succeed).
-    ///
-    /// The rights which could not be preauthorized are not currently authorized and may fail to authorize when a later call to
-    /// ``requestRights(_:environment:options:)`` or ``requestRightsAsync(_:environment:options:callback:)`` is
-    /// made, unless the ``AuthorizationOption/extendRights`` and ``AuthorizationOption/interactionAllowed`` options are provided.
-    /// Even then they might still fail if the user does not supply the correct credentials.
-    ///
-    /// - Parameters:
-    ///   - rights: A set of ``AuthorizationRight`` instances containing rights for which authorization is being requested.  If the set is empty, this
-    ///             instance can be valid, but will be authorized for nothing.
-    ///   - environment: A set of ``AuthorizationEnvironmentEntry`` instances containing environment state used when making the authorization
-    ///                  decision. Can be an empty set if no environment state needs to be provided.
-    ///   - options: A set of ``AuthorizationOption`` instances to configure this authorization. Can be an empty set if no options are needed.
-    public init(rights: Set<AuthorizationRight>,
-                environment: Set<AuthorizationEnvironmentEntry>,
-                options: Set<AuthorizationOption>) throws {
-        // This double-level nesting is necessary because the sets passed to the closures rely internally on the
-        // withUnsafeMutableBufferPointer() function which has a pointer only valid within the scope of the closure.
-        // All of the pointers need to be in scope when the AuthorizationCreate() call is made.
-        self.authorizationRef = try rights.withUnsafePointer { rightsPointer in
-            return try environment.withUnsafePointer { environmentPointer in
-                return try AuthorizationError.throwIfFailure { authorization in
-                    AuthorizationCreate(rightsPointer, environmentPointer, options.asAuthorizationFlags(), &authorization)
-                }
-            }
+    public init() throws {
+        self.authorizationRef = try AuthorizationError.throwIfFailure { authorization in
+            AuthorizationCreate(nil, nil, [], &authorization)
         }
     }
     
@@ -136,7 +90,7 @@ public class Authorization: Codable {
     private static func deserialize(from serialization: Data) throws -> AuthorizationRef {
         // Convert data into authorization external form
         var int8Array = [CChar](repeating: 0, count: kAuthorizationExternalFormLength)
-        for index in 0...kAuthorizationExternalFormLength - 1 {
+        for index in 0..<kAuthorizationExternalFormLength {
             int8Array[index] = CChar(bitPattern: serialization[index])
         }
         let bytes = (int8Array[0],  int8Array[1],  int8Array[2],  int8Array[3],
@@ -297,7 +251,7 @@ public class Authorization: Codable {
         }
     }
     
-    /// Retrieves supporting information such as the user name gathered during evaluation of authorization.
+    /// Retrieves supporting information such as the user name gathered while requesting rights.
     ///
     /// Information provided via
     /// [`SetContextValue`](https://developer.apple.com/documentation/security/authorizationcallbacks/1543148-setcontextvalue)

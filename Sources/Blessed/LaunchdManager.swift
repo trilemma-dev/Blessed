@@ -11,15 +11,15 @@ import ServiceManagement
 /// Register launchd services.
 ///
 /// Functionality is provided to:
-///  - install (bless) privileged executables which will run as root
-///  - enable (or disable) a bundle to run as a login item
+///  - install (bless) privileged helper tools which will run as root
+///  - enable or disable bundles to run as login items
 ///
 /// This functionality has exacting requirements in order for them to succeed; closely read each function's documentation.
 ///
 /// ## Topics
-/// ### Privileged Executables
+/// ### Privileged Helper Tools
 /// - ``authorizeAndBless(message:icon:)``
-/// - ``bless(executableLabel:authorization:)``
+/// - ``bless(label:authorization:)``
 /// ### Login Items
 /// - ``enableLoginItem(forBundleIdentifier:)``
 /// - ``disableLoginItem(forBundleIdentifier:)``
@@ -27,36 +27,52 @@ public struct LaunchdManager {
     
     private init() { }
     
-    /// Submits the executable as a launchd job.
+    /// Submits a privileged helper tool as a launchd job.
     ///
-    /// In order to use this function the following requirements must be met:
-    ///  1. The calling application and target executable tool must both be signed.
-    ///  2. The calling application's Info.plist must include a
-    /// [`SMPrivilegedExecutables`](https://developer.apple.com/documentation/bundleresources/information_property_list/smprivilegedexecutables)
-    ///  dictionary of strings. Each string is a textual representation of a code
-    ///  signing requirement used to determine whether the application owns the privileged tool once installed (i.e. in order for subsequent versions to update the
-    ///  installed version).
-    ///
-    /// Each key of `SMPrivilegedExecutables` is a reverse-DNS label for the helper tool (must be globally unique).
-    /// 1. The helper tool must have an embedded Info.plist containing an
-    /// [`SMAuthorizedClients`](https://developer.apple.com/documentation/bundleresources/information_property_list/smauthorizedclients)
-    /// array of strings. Each string is a textual representation of a
-    /// code signing requirement describing a client which is allowed to add and remove the tool.
-    /// 2. The helper tool must have an embedded launchd plist. The only required key in this plist is the `Label` key. When the launchd plist is extracted and
-    /// written to disk, the key for `ProgramArguments` will be set to an array of 1 element pointing to a standard location. You cannot specify your own
-    /// program arguments, so do not rely on custom command line arguments being passed to your tool. Pass any parameters via IPC.
-    /// 3. The helper tool must reside in the `Contents/Library/LaunchServices` directory inside the application bundle, and its name must be its
-    /// launchd job label. So if your launchd job label is "com.apple.Mail.helper", this must be the name of the tool in your application bundle.
+    /// In order to successfully use this function the following requirements must be met:
+    /// 1. The app calling this function **must** be signed.
+    /// 2. The helper tool **must** be an executable, not an app bundle.
+    /// 3. The helper tool **must** be signed.
+    /// 4. The helper tool **must** be located in the `Contents/Library/LaunchServices` directory inside the app's bundle.
+    /// 5. The filename of the helper tool **should** be reverse-DNS format.
+    ///    - If the app has the bundle identifier "com.example.SwiftAuthorizationApp" then the helper tool **may** have a filename of
+    ///      "com.example.SwiftAuthorizationApp.helper".
+    /// 6. The helper tool **must** have an embedded launchd property list.
+    /// 7. The helper tool's embedded launchd property list **must** have an entry with `Label` as the key and the value **must** be the filename of the
+    ///   helper tool.
+    /// 8. The helper tool **must** have an embedded info property list.
+    /// 9. The helper tool's embedded info property list **must** have an entry with
+    ///   [`SMAuthorizedClients`](https://developer.apple.com/documentation/bundleresources/information_property_list/smauthorizedclients)
+    ///   as its key and its value **must** be an array of strings. Each string **must** be a
+    ///   [code signing requirement](https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/RequirementLang/RequirementLang.html).
+    ///   The app **must** satisify at least one of these requirements.
+    ///    - Only processes which meet one or more of these requirements may install or update the helper tool.
+    ///    - These requirements are *only* about which processes may install or update the helper tool. They impose no restrictions on which processes can
+    ///      communicate with the helper tool.
+    /// 10. The helper tool's embedded info property list **must** have an entry with
+    ///    [`CFBundleVersion`](https://developer.apple.com/documentation/bundleresources/information_property_list/cfbundleversion)
+    ///    as its key and its value **must** be a string matching the format described in `CFBundleVersion`'s documentation.
+    ///     - This requirement is *not* documented by Apple, but is enforced.
+    ///     - While not documented by Apple, calling this function will not overwrite an existing installation of a helper tool with one that has an equal or lower
+    ///       value for its `CFBundleVersion` entry.
+    ///     - Despite Apple requiring the info property list contain a key named `CFBundleVersion`, the helper tool **must** be a Command Line Tool and
+    ///       **must not** be a bundle.
+    /// 11. The app's Info.plist **must** have an entry with
+    ///    [`SMPrivilegedExecutables`](https://developer.apple.com/documentation/bundleresources/information_property_list/smprivilegedexecutables)
+    ///    as its key and its value must be a dictionary. Each dictionary key **must** be a helper tool's filename; for example
+    ///    "com.example.SwiftAuthorizationApp.helper". Each dictionary value **must** be a string representation of a code signing requirement that the helper
+    ///    tool satisfies.
     ///
     /// - Parameters:
-    ///   - executableLabel: The label of the privileged executable to install. This label must be one of the keys found in the
+    ///   - label: The label of the helper tool executable to install. This label must be one of the keys found in the
     ///  [`SMPrivilegedExecutables`](https://developer.apple.com/documentation/bundleresources/information_property_list/smprivilegedexecutables)
-    ///    dictionary in this application's Info.plist.
+    ///    dictionary in this app's Info.plist.
     ///   - authorization: An authorization containing the  ``AuthorizationRight/blessPrivilegedHelper`` right.
-    public static func bless(executableLabel: String, authorization: Authorization) throws {
+    /// - Throws: ``LaunchdError`` if unable to bless.
+    public static func bless(label: String, authorization: Authorization) throws {
         var unmanagedError: Unmanaged<CFError>?
         let result = SMJobBless(kSMDomainSystemLaunchd,
-                                executableLabel as CFString,
+                                label as CFString,
                                 authorization.authorizationRef,
                                 &unmanagedError)
         if let error = unmanagedError?.takeUnretainedValue() {
@@ -67,15 +83,15 @@ public struct LaunchdManager {
         }
     }
     
-    /// Requests authorization and then submits the executable defined by this application's
+    /// Requests authorization and then submits the privileged helper tool defined by this app's
     /// [`SMPrivilegedExecutables`](https://developer.apple.com/documentation/bundleresources/information_property_list/smprivilegedexecutables)
     /// as a launchd job.
     ///
-    /// See ``Authorization/init(rights:environment:options:)`` and ``bless(executableLabel:authorization:)`` for details on
-    /// this function's behavior as both are called internally.
+    /// See ``Authorization/requestRights(_:environment:options:)`` and ``bless(label:authorization:)`` for details
+    /// on this function's behavior as both are called internally.
     ///
-    /// Tthe value for `bless`'s `executableLabel` parameter is determined as the key for the first entry in `SMPrivilegedExecutables` if this
-    /// dictionary contains exactly one entry. Otherwise  ``LaunchdError/invalidExecutablesDictionary`` will be thrown.
+    /// Tthe value for `bless`'s `label` parameter is determined as the key for the first entry in `SMPrivilegedExecutables` if this dictionary contains
+    /// exactly one entry. Otherwise  ``LaunchdError/invalidExecutablesDictionary`` will be thrown.
     ///
     /// - Parameters:
     ///   - message: Optional message shown to the user as part of the macOS authentication dialog.
@@ -91,19 +107,20 @@ public struct LaunchdManager {
             environment.insert(AuthorizationEnvironmentEntry.forIcon(icon))
         }
         let options: Set<AuthorizationOption> = [.interactionAllowed, .extendRights]
-        let authorization = try Authorization(rights: rights, environment: environment, options: options)
+        let authorization = try Authorization()
+        _ = try authorization.requestRights(rights, environment: environment, options: options)
         
         // Bless executable
         if let executables = Bundle.main.infoDictionary?["SMPrivilegedExecutables"] as? [String : String],
            executables.count == 1,
            let firstExecutable = executables.first?.key {
-            try bless(executableLabel: firstExecutable, authorization: authorization)
+            try bless(label: firstExecutable, authorization: authorization)
         } else {
             throw LaunchdError.invalidExecutablesDictionary
         }
     }
     
-    /// Enables a helper tool in the main app bundle’s Contents/Library/LoginItems directory.
+    /// Enables a helper tool in the main app bundle’s `Contents/Library/LoginItems` directory.
     ///
     /// This is effective only for the currently logged-in user. If this function returns successfully, the helper tool starts immediately (and upon subsequent logins)
     /// and keeps running.
@@ -116,7 +133,7 @@ public struct LaunchdManager {
         }
     }
     
-    /// Disable a helper tool in the main app bundle’s Contents/Library/LoginItems directory.
+    /// Disables a helper tool in the main app bundle’s `Contents/Library/LoginItems` directory.
     ///
     /// This is effective only for the currently logged-in user. If this function returns successfully, the helper tool stop immediately.
     ///
