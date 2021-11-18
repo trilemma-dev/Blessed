@@ -171,6 +171,17 @@ public class Authorization: Codable {
     /// If you **do** include ``AuthorizationOption/interactionAllowed`` as an option and the user cancels the authentication process, then this
     /// function will throw ``AuthorizationError/canceled``.
     ///
+    /// ## Usage
+    /// As an example, to request rights needed for "blessing" a privileged helper tool:
+    /// ```swift
+    /// let message = "Example of a compelling reason you should grant authorization."
+    /// let icon = Bundle.main.url(forResource: "logoWithLock", withExtension: "png")!
+    /// let authorization = try Authorization()
+    /// let granted = try authorization.requestRights([.blessPrivilegedHelper],
+    ///                                               environment: [.forPrompt(message: message), .forIcon(icon)],
+    ///                                               options: [.interactionAllowed, .extendRights])
+    /// ```
+    ///
     /// - Parameters:
     ///   - rights: Set of authorization rights. These rights must be defined in the Policy Database. If the application requires no rights at this time,
     ///             pass an empty set.

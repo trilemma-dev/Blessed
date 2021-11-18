@@ -98,17 +98,16 @@ public struct LaunchdManager {
     ///   - icon: Optional file path to an image file loadable by `NSImage` which will be shown to the user as part of the macOS authentication dialog.
     public static func authorizeAndBless(message: String? = nil, icon: URL? = nil) throws {
         // Request authorization for blessing
-        let rights: Set<AuthorizationRight> = [AuthorizationRight.blessPrivilegedHelper]
         var environment = Set<AuthorizationEnvironmentEntry>()
         if let message = message {
-            environment.insert(AuthorizationEnvironmentEntry.forPrompt(message: message))
+            environment.insert(.forPrompt(message: message))
         }
         if let icon = icon {
-            environment.insert(AuthorizationEnvironmentEntry.forIcon(icon))
+            environment.insert(.forIcon(icon))
         }
         let options: Set<AuthorizationOption> = [.interactionAllowed, .extendRights]
         let authorization = try Authorization()
-        _ = try authorization.requestRights(rights, environment: environment, options: options)
+        _ = try authorization.requestRights([.blessPrivilegedHelper], environment: environment, options: options)
         
         // Bless executable
         if let executables = Bundle.main.infoDictionary?["SMPrivilegedExecutables"] as? [String : String],
@@ -149,6 +148,9 @@ public struct LaunchdManager {
 // Adds static properties for the rights in the ServiceManagement framework.
 public extension AuthorizationRight {
     /// Authorization right for blessing and installing a privileged helper tool.
+    ///
+    /// When using this to check or request rights, ``AuthorizationEnvironmentEntry/forPrompt(message:)`` and
+    /// ``AuthorizationEnvironmentEntry/forIcon(_:)`` can be specified as environment entries.
     static let blessPrivilegedHelper = AuthorizationRight(name: kSMRightBlessPrivilegedHelper)
    
     /// Authorization right for modifying system daemons.
