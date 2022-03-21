@@ -89,10 +89,7 @@ public class Authorization: Codable {
     /// Deserializes a `Data` instance into an `AuthorizationRef`.
     private static func deserialize(from serialization: Data) throws -> AuthorizationRef {
         // Convert data into authorization external form
-        var int8Array = [CChar](repeating: 0, count: kAuthorizationExternalFormLength)
-        for index in 0..<kAuthorizationExternalFormLength {
-            int8Array[index] = CChar(bitPattern: serialization[index])
-        }
+        let int8Array = serialization.map { CChar(bitPattern: $0) }
         let bytes = (int8Array[0],  int8Array[1],  int8Array[2],  int8Array[3],
                      int8Array[4],  int8Array[5],  int8Array[6],  int8Array[7],
                      int8Array[8],  int8Array[9],  int8Array[10], int8Array[11],
