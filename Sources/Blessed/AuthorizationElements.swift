@@ -42,9 +42,9 @@ internal extension AuthorizationElement {
 /// An authorization right.
 ///
 /// The existence of a right instance does not mean it is defined in the Policy Database. To determine whether a right has a definition (meaning it exists) call
-///  ``AuthorizationRight/isDefined()``. If this right was returned from ``Authorization/requestRights(_:environment:options:)`` or
-///  ``Authorization/requestRightsAsync(_:environment:options:callback:)`` then this right was defined at the moment in time it was
-/// returned.
+/// ``AuthorizationRight/isDefined()``. If this right was returned from
+/// ``Authorization/requestRights(_:environment:options:)-5wtuy`` or an asynchronous equivalent then this right was defined at the moment
+/// in time it was returned.
 ///
 /// ## Topics
 /// ### Initializers
@@ -90,8 +90,8 @@ public struct AuthorizationRight: AuthorizationElement, Hashable {
     
     /// If a requested right cannot be preauthorized.
     ///
-    /// This only has defined behavior when the right was returned from  ``Authorization/requestRights(_:environment:options:)`` or
-    /// ``Authorization/requestRightsAsync(_:environment:options:callback:)``. Otherwise this property's value is undefined.
+    /// This only has defined behavior when the right was returned from  ``Authorization/requestRights(_:environment:options:)-5wtuy`` or
+    /// asynchronous equivalent. Otherwise this property's value is undefined.
     public var cannotPreAuthorize: Bool {
         return self.flags == kAuthorizationFlagCanNotPreAuthorize
     }

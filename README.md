@@ -9,6 +9,9 @@ try LaunchdManager.authorizeAndBless(message: message, icon: icon)
 
 Both the `message` and `icon` parameters are optional. Defaults will be provided by macOS if they are not specified.
 
+On macOS 10.15 and later this functionality is also available as an `async` variant which will not block while waiting
+for a user to grant (or decline) authorization. 
+
 To see a runnable sample app using this framework, check out
 [SwiftAuthorizationSample](https://github.com/trilemma-dev/SwiftAuthorizationSample).
 

@@ -17,8 +17,9 @@ import Foundation
 /// - ``init()``
 ///
 /// ### Rights
-/// - ``requestRights(_:environment:options:)``
-/// - ``requestRightsAsync(_:environment:options:callback:)``
+/// - ``requestRights(_:environment:options:)-5wtuy``
+/// - ``requestRights(_:environment:options:)-6vjgn``
+/// - ``requestRights(_:environment:options:callback:)``
 /// - ``checkRights(_:environment:options:)``
 /// - ``destroyRights()``
 ///
@@ -40,8 +41,7 @@ public class Authorization: Codable {
     
     /// Creates a new instance with no rights.
     ///
-    /// To request rights, use ``requestRights(_:environment:options:)`` or
-    /// ``requestRightsAsync(_:environment:options:callback:)``.
+    /// To request rights, use ``requestRights(_:environment:options:)-5wtuy`` or an asynchronous equivalent.
     public init() throws {
         self.authorizationRef = try AuthorizationError.throwIfFailure { authorization in
             AuthorizationCreate(nil, nil, [], &authorization)
@@ -89,7 +89,7 @@ public class Authorization: Codable {
     /// Deserializes a `Data` instance into an `AuthorizationRef`.
     private static func deserialize(from serialization: Data) throws -> AuthorizationRef {
         // Convert data into authorization external form
-        let int8Array = serialization.map { CChar(bitPattern: $0) }
+        let int8Array = serialization.map { Int8(bitPattern: $0) }
         let bytes = (int8Array[0],  int8Array[1],  int8Array[2],  int8Array[3],
                      int8Array[4],  int8Array[5],  int8Array[6],  int8Array[7],
                      int8Array[8],  int8Array[9],  int8Array[10], int8Array[11],
@@ -215,9 +215,9 @@ public class Authorization: Codable {
         }
     }
     
-    /// Authorizes and preauthorizes rights asynchronously.
+    /// Authorizes and preauthorizes rights asynchronously using a closure.
     ///
-    /// See the discussion for  ``Authorization/requestRights(_:environment:options:)`` This function behaves similarly, except that it
+    /// See the discussion for  ``Authorization/requestRights(_:environment:options:)-5wtuy`` This function behaves similarly, except that it
     /// performs its operations asynchronously and calls the `callback` upon completion.
     ///
     /// - Parameters:
@@ -234,10 +234,10 @@ public class Authorization: Codable {
     ///     - Include ``AuthorizationOption/preAuthorize`` and ``AuthorizationOption/extendRights`` to preauthorize rights.
     ///     - Include ``AuthorizationOption/destroyRights`` to prevent the Security Server from preserving the rights obtained during this call.
     ///   - callback: A callback that you provide for the function to call when it finishes asynchronously.
-    public func requestRightsAsync(_ rights: Set<AuthorizationRight>,
-                                   environment: Set<AuthorizationEnvironmentEntry>,
-                                   options: Set<AuthorizationOption>,
-                                   callback: @escaping ((Result<[AuthorizationRight], AuthorizationError>) -> Void)) {
+    public func requestRights(_ rights: Set<AuthorizationRight>,
+                              environment: Set<AuthorizationEnvironmentEntry>,
+                              options: Set<AuthorizationOption>,
+                              callback: @escaping ((Result<[AuthorizationRight], AuthorizationError>) -> Void)) {
         let legacyCallback = { (status: OSStatus, rightsPointer: UnsafeMutablePointer<AuthorizationRights>?) in
             let result: Result<[AuthorizationRight], AuthorizationError>
             if status == errAuthorizationSuccess, let rightsPointer = rightsPointer {
@@ -255,6 +255,42 @@ public class Authorization: Codable {
                                              environmentPointer,
                                              options.asAuthorizationFlags(),
                                              legacyCallback)
+            }
+        }
+    }
+    
+    /// Authorizes and preauthorizes rights asynchronously using Swift concurrency.
+    ///
+    /// See the discussion for  ``Authorization/requestRights(_:environment:options:)-5wtuy`` This function behaves similarly, except that it
+    /// performs its operations asynchronously.
+    ///
+    /// - Parameters:
+    ///   - rights: Set of authorization rights. These rights must be defined in the Policy Database. If the application requires no rights at this time,
+    ///             pass an empty set.
+    ///   - environment: Environment entries used when authorizing or preauthorizing rights.  The entries passed in are not stored; they are only used during
+    ///                  authorization. If there is no need to modify the environment, pass an empty set.
+    ///   - options: A set specifying authorization options. You can specify the following options:
+    ///     - Pass an empty set if no options are necessary.
+    ///     - Include ``AuthorizationOption/extendRights`` to request rights. You can also include
+    ///       ``AuthorizationOption/interactionAllowed`` to allow user interaction.
+    ///     - Include ``AuthorizationOption/partialRights`` and ``AuthorizationOption/extendRights``  to request partial rights.
+    ///       You can also include ``AuthorizationOption/interactionAllowed`` to allow user interaction.
+    ///     - Include ``AuthorizationOption/preAuthorize`` and ``AuthorizationOption/extendRights`` to preauthorize rights.
+    ///     - Include ``AuthorizationOption/destroyRights`` to prevent the Security Server from preserving the rights obtained during this call.
+    @available(macOS 10.15.0, *)
+    public func requestRights(_ rights: Set<AuthorizationRight>,
+                              environment: Set<AuthorizationEnvironmentEntry>,
+                              options: Set<AuthorizationOption>) async throws -> [AuthorizationRight] {
+        try await withUnsafeThrowingContinuation {
+            (continuation: UnsafeContinuation<[AuthorizationRight], Error>) in
+            
+            self.requestRights(rights, environment: environment, options: options) { result in
+                switch result {
+                    case .success(let value):
+                        continuation.resume(returning: value)
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
+                }
             }
         }
     }
