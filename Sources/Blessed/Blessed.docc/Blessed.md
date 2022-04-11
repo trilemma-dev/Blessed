@@ -18,7 +18,7 @@ For completeness the Service Management capability to enable and disable login i
 
 ## Installing a Root Privileged Helper Tool
 Because in practice #1 is so often done in order to perform #3, this framework provides the
-``LaunchdManager/authorizeAndBless(message:icon:)`` function which combines both into just one call:
+``LaunchdManager/authorizeAndBless(message:icon:)-4qvn1`` function which combines both into just one call:
 ```swift
 let message = "Example App needs your permission to do thingamajig."
 let icon = Bundle.main.url(forResource: "bless", withExtension: "png")
@@ -26,6 +26,10 @@ try LaunchdManager.authorizeAndBless(message: message, icon: icon)
 ```
 
 Both the `message` and `icon` parameters are optional. Defaults will be provided by macOS if they are not specified.
+
+On macOS 10.15 and later this functionality is also available as an `async` variant 
+``LaunchdManager/authorizeAndBless(message:icon:)-9guaa`` which will not block while waiting for a user to grant (or
+decline) authorization. 
 
 ## Defining Custom Rights
 macOS's authorization system is built around the concept of rights. The Policy Database contains definitions for all of
@@ -62,11 +66,10 @@ In some more advanced circumstances you may to want directly interact with macOS
 ``Authorization`` class.
 
 If you only need to check if a user can perform an operation, use ``Authorization/checkRights(_:environment:options:)``
-without needing to create an `Authorization` instance.
+which does not involve creating an `Authorization` instance.
 
 Otherwise you'll typically want to initialize an instance via ``Authorization/init()`` and then subsequently request
-rights with ``Authorization/requestRights(_:environment:options:)`` or 
-``Authorization/requestRightsAsync(_:environment:options:callback:)``.
+rights with ``Authorization/requestRights(_:environment:options:)-5wtuy`` or an asynchronous equivalent.
 
 > Tip: `Authorization` conforms to [`Codable`](https://developer.apple.com/documentation/swift/codable) and so can be
 serialized and deserialized for convenient transference between processes.
