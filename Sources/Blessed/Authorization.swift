@@ -86,8 +86,16 @@ public class Authorization: Codable {
         self.authorizationRef = try Authorization.deserialize(from: serialization)
     }
     
+    private static let authorizationExternalFormChildrenCount = Mirror(reflecting: AuthorizationExternalForm().bytes)
+                                                                    .children.count
+    
     /// Deserializes a `Data` instance into an `AuthorizationRef`.
     private static func deserialize(from serialization: Data) throws -> AuthorizationRef {
+        // The encoded data is only valid if the count matches that of the AuthorizationExternalForm's bytes tuple
+        if serialization.count != authorizationExternalFormChildrenCount {
+            throw AuthorizationError.other(errSecInvalidEncoding)
+        }
+        
         // Convert data into authorization external form
         let int8Array = serialization.map { Int8(bitPattern: $0) }
         let bytes = (int8Array[0],  int8Array[1],  int8Array[2],  int8Array[3],
