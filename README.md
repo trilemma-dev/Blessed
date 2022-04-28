@@ -13,7 +13,7 @@ On macOS 10.15 and later this functionality is also available as an `async` vari
 for a user to grant (or decline) authorization. 
 
 To see a runnable sample app using this framework, check out
-[SwiftAuthorizationSample](https://github.com/trilemma-dev/SwiftAuthorizationSample).
+[SwiftAuthorizationSample](https://github.com/trilemma-dev/SwiftAuthorizationSample) which also makes use of [SecureXPC](https://github.com/trilemma-dev/SecureXPC/) for secure interprocess communication.
 
 [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Ftrilemma-dev%2FBlessed%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/trilemma-dev/Blessed)
 
