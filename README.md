@@ -69,13 +69,11 @@ plug-in, which is not covered by this framework. See
 for more information.
 
 ## Sandboxing
-Most of this framework is *not* available to sandboxed apps because of privilege escalation.
+Most of this framework is *not* available to sandboxed processes because of privilege escalation.
 
 The exceptions to this are:
  - reading or existence checking a right definition in the Policy Database
  - enabling or disabling a login item
 
-If you need to determine at run time if your app is sandboxed, this framework exposes an extension on `NSApplication`:
-```swift
-let sandboxed = try NSApplication.shared.isSandboxed()
-```
+If you need to determine at run time if your process is sandboxed, this framework adds a property to `ProcessInfo`:
+`ProcessInfo.processInfo.isSandboxed`.

@@ -80,17 +80,15 @@ underlying reference can be accessed via ``Authorization/authorizationRef``. How
 reference is bound to its containing `Authorization` instance.
 
 ## Sandboxing
-> Warning: Most of this framework is *not* available to sandboxed apps because of privilege escalation.
+> Warning: Most of this framework is *not* available to sandboxed processes because of privilege escalation.
 
 The exceptions to this are:
  - reading or existence checking a right definition in the Policy Database
  - enabling or disabling a login item
 
-If you need to determine at run time if your app is sandboxed, this framework exposes an extension on
-[`NSApplication`](https://developer.apple.com/documentation/appkit/nsapplication):
-```swift
-let sandboxed = try NSApplication.shared.isSandboxed()
-```
+If you need to determine at run time if your process is sandboxed, this framework adds a property to
+[`ProcessInfo`](https://developer.apple.com/documentation/foundation/processinfo):
+`ProcessInfo.processInfo.isSandboxed`.
 
 ## Topics
 ### Authorization
