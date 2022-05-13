@@ -1,15 +1,14 @@
 //
-//  NSApplication+Sandbox.swift
+//  ProcessInfo+Sandbox.swift
 //  Blessed
 //
 //  Created by Josh Kaplan on 2021-10-21
 //
 
 import Foundation
-import AppKit
 
-extension NSApplication {
-    /// A Boolean value indicating whether this app is sandboxed.
+extension ProcessInfo {
+    /// A Boolean value indicating whether this process is sandboxed.
     ///
     /// The value of this property is `true` if the
     /// [App Sandbox Entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com_apple_security_app-sandbox)

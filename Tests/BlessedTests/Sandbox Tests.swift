@@ -11,6 +11,6 @@ import Blessed
 final class SandboxTests: XCTestCase {
     
     func testIsSandboxed() {
-        XCTAssertFalse(NSApplication.shared.isSandboxed)
+        XCTAssertFalse(ProcessInfo.processInfo.isSandboxed)
     }
 }
