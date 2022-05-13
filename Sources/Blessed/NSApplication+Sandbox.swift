@@ -9,45 +9,31 @@ import Foundation
 import AppKit
 
 extension NSApplication {
-    /// Indicates whether the app is sandboxed.
+    /// A Boolean value indicating whether this app is sandboxed.
     ///
-    /// Authorization is not supported within an App Sandbox because it allows privilege escalation.
+    /// The value of this property is `true` if the
+    /// [App Sandbox Entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com_apple_security_app-sandbox)
+    /// is present and has a value of `true`, otherwise it is `false`.
     ///
-    /// - Throws: ``AuthorizationError`` if unable to determine whether this app is sandboxed.
-    /// - Returns: If the app is sandboxed.
-    public func isSandboxed() throws -> Bool {
-        // Code representations of this running code
-        let currentCode: SecCode = try AuthorizationError.throwIfFailure { currentCode in
-            SecCodeCopySelf(SecCSFlags(), &currentCode)
+    /// >Important: Authorization is not supported within an App Sandbox because it allows privilege escalation.
+    public var isSandboxed: Bool {
+        guard let task = SecTaskCreateFromSelf(nil) else {
+            // The documentation for SecTaskCreateFromSelf mention an error can occur resulting in a nil return, but
+            // lacks any information under what conditions that can occur. In practice, none have been observed.
+            fatalError("SecTaskCreateFromSelf returned nil")
         }
         
-        // Static representation of this running code
-        let currentStaticCode: SecStaticCode = try AuthorizationError.throwIfFailure { currentStaticCode in
-            SecCodeCopyStaticCode(currentCode, SecCSFlags(), &currentStaticCode)
+        let entitlementName = "com.apple.security.app-sandbox" as CFString
+        guard let entitlement = SecTaskCopyValueForEntitlement(task, entitlementName, nil) else {
+            // Lack of entitlement value means the app isn't sandboxed.
+            return false
         }
         
-        // Signing information dictionary, expected to contain entitlements dictionary
-        let info: NSDictionary = try AuthorizationError.throwIfFailure { info in
-            let flags = SecCSFlags(rawValue: kSecCSDynamicInformation)
-            var cfInfo = info as CFDictionary?
-            return SecCodeCopySigningInformation(currentStaticCode, flags, &cfInfo)
+        guard CFGetTypeID(entitlement) == CFBooleanGetTypeID(), let boolValue = (entitlement as? Bool) else {
+            // The entitlement value must be a boolean value. If it's not, then it's presumbly not sandboxed.
+            return false
         }
         
-        // Entitlements dictionary should be present
-        guard let entitlements = info[kSecCodeInfoEntitlementsDict] as? NSDictionary else {
-            // This isn't expected to happen, but we need to throw something if it does
-            // Throwing internalError isn't perfectly correct, but it's preferable to creating an error just for this
-            throw AuthorizationError.internalError
-        }
-        
-        // Whether this app has the sandbox entitlement and what its value is
-        let sandboxed: Bool
-        if let sandboxEntitlement = entitlements["com.apple.security.app-sandbox"] as? Bool {
-            sandboxed = sandboxEntitlement
-        } else { // Lack of boolean entitlement value means the app isn't sandboxed
-            sandboxed = false
-        }
-        
-        return sandboxed
+        return boolValue
     }
 }
