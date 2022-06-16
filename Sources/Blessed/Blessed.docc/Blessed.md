@@ -31,6 +31,10 @@ On macOS 10.15 and later this functionality is also available as an `async` vari
 ``LaunchdManager/authorizeAndBless(message:icon:)-9guaa`` which will not block while waiting for a user to grant (or
 decline) authorization. 
 
+One of the most challenging aspects of using `SMJobBless` is that when it fails, it can be very hard to determine _why_.
+To assist your debugging of such situations, this package throws a ``BlessError`` which provides a detailed explanation
+for each bless requirement which was not met.
+
 ## Defining Custom Rights
 macOS's authorization system is built around the concept of rights. The Policy Database contains definitions for all of
 the rights on the system and your application can add its own.
@@ -107,4 +111,5 @@ If you need to determine at run time if your process is sandboxed, this framewor
 - ``AuthorizationError``
 ### launchd Registration
 - ``LaunchdManager``
+- ``BlessError``
 - ``LaunchdError``

@@ -10,7 +10,11 @@ try LaunchdManager.authorizeAndBless(message: message, icon: icon)
 Both the `message` and `icon` parameters are optional. Defaults will be provided by macOS if they are not specified.
 
 On macOS 10.15 and later this functionality is also available as an `async` variant which will not block while waiting
-for a user to grant (or decline) authorization. 
+for a user to grant (or decline) authorization.
+
+One of the most challenging aspects of using `SMJobBless` is that when it fails, it can be very hard to determine _why_.
+To assist your debugging of such situations, this package throws a `BlessError` which provides a detailed explanation
+for each bless requirement which was not met.
 
 To see a runnable sample app using this framework, check out
 [SwiftAuthorizationSample](https://github.com/trilemma-dev/SwiftAuthorizationSample) which also makes use of [SecureXPC](https://github.com/trilemma-dev/SecureXPC/) for secure interprocess communication.
