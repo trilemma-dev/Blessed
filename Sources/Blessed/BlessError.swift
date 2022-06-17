@@ -23,15 +23,18 @@ public struct BlessError: Error {
     
     init(underlyingError: CFError?, label: String, authorization: Authorization) {
         self.underlyingError = underlyingError
+        
+        let toolAssessor = HelperToolAssessor(label: label)
+        let appAssessor = AppAssessor()
         self.assessments = [
-            assessAppIsSigned(), // 1
-            assessHelperToolIsExecutable(label: label), // 2 & 3
-            assessHelperToolIsSigned(label: label), // 4
-            asssessHelperToolLaunchdPropertyList(label: label), // 5 & 6
-            asssessHelperToolInfoPropertyListAuthorizedClients(label: label, type: .bundled), // 7 & 8 - bundled
-            asssessHelperToolInfoPropertyListAuthorizedClients(label: label, type: .installed), // 7 & 8 - installed
-            asssessHelperToolInfoPropertyListBundleVersion(label: label), // 9
-            asssessAppInfoPropertyList(label: label) // 10
+            appAssessor.isSigned(), // 1
+            toolAssessor.isExecutable(), // 2 & 3
+            toolAssessor.isSigned(), // 4
+            toolAssessor.launchdPropertyList(), // 5 & 6
+            toolAssessor.infoPropertyListAuthorizedClients(type: .bundled), // 7 & 8 - bundled
+            toolAssessor.infoPropertyListAuthorizedClients(type: .installed), // 7 & 8 - bundled
+            toolAssessor.infoPropertyListBundleVersion(), // 9
+            appAssessor.infoPropertyList(bundledHelperToolLocation: toolAssessor.bundledLocation, label: label) // 10
         ]
     }
 }
@@ -98,338 +101,394 @@ private enum Assessment {
     case notDetermined(explanation: String)
 }
 
-private enum HelperToolType: String {
-    case bundled
-    case installed
-}
 
-// The numbers in front of each function correspond to the requirements described in LaunchdManager.bless(...)
+// The numbers in front of each function corresponds to the requirements described in LaunchdManager.bless(...)
 
-// 1
-fileprivate func assessAppIsSigned() -> Assessment {
-    var code: SecCode?
-    guard SecCodeCopySelf([], &code) == errSecSuccess, let code = code else {
-        return .notDetermined(explanation: "Could not create SecCode for this application")
+
+fileprivate struct HelperToolAssessor {
+    
+    enum HelperToolType: String {
+        case bundled
+        case installed
     }
     
-    let result = SecCodeCheckValidity(code, [], nil)
-    if result == errSecSuccess {
+    let label: String
+    
+    var bundledLocation: URL {
+        Bundle.main.bundleURL.appendingPathComponent("Contents")
+                             .appendingPathComponent("Library")
+                             .appendingPathComponent("LaunchServices")
+                             .appendingPathComponent(label)
+    }
+
+    var installedLocation: URL {
+        URL(fileURLWithPath: "/Library/PrivilegedHelperTools/\(label)")
+    }
+    
+    // 2 & 3
+    fileprivate func isExecutable() -> Assessment {
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: bundledLocation.path, isDirectory: &isDirectory) else {
+            return .notSatisfied(explanation: """
+            There is no bundled helper tool in this application's /Contents/Library/LaunchServices/ directory with the \
+            file name: \(label)
+            """)
+        }
+        if isDirectory.boolValue {
+            return .notSatisfied(explanation: """
+            The bundled helper tool must be a file, not a directory (such as an .app bundle).
+            """)
+        }
+        
+        // Now determine if this file is a Mach-O executable by looking at the first four bytes for the "magic" value.
+        // There are six valid "magic" values: 32-bit, 64-bit, and fat (universal) binaries — in either endianess.
+        guard let toolData = try? Data(contentsOf: bundledLocation) else {
+            return .notDetermined(explanation: "Unable to read contents of the bundled helper tool.")
+        }
+        let firstFourBytes = toolData.withUnsafeBytes { pointer in
+            pointer.load(fromByteOffset: 0, as: UInt32.self)
+        }
+        let validMagicValues: Set<UInt32> = [MH_MAGIC, MH_CIGAM, MH_MAGIC_64, MH_CIGAM_64, FAT_MAGIC, FAT_CIGAM]
+        guard validMagicValues.contains(firstFourBytes) else {
+            return .notSatisfied(explanation: "The bundle helper tool is not a Mach-O executable.")
+        }
+        
         return .satisfied
-    } else if result == errSecCSUnsigned {
-        return .notSatisfied(explanation: "This application does not have a valid signature")
-    } else {
-        return .notDetermined(explanation: "Signature checking failed with error \(result)")
-    }
-}
-
-// 2 & 3
-fileprivate func assessHelperToolIsExecutable(label: String) -> Assessment {
-    let toolURL = bundledHelperToolLocation(label: label)
-    
-    var isDirectory = ObjCBool(false)
-    guard FileManager.default.fileExists(atPath: toolURL.path, isDirectory: &isDirectory) else {
-        return .notSatisfied(explanation: "There is no bundled helper tool in this application's " +
-                                          "/Contents/Library/LaunchServices/ directory with the file name: \(label)")
-    }
-    if isDirectory.boolValue {
-        return .notSatisfied(explanation: "The bundled helper tool must be a file, not a directory (such as an " +
-                                          ".app bundle)")
     }
     
-    // Now determine if this file is a Mach-O executable by looking at the first four bytes for the "magic" value.
-    // There are six valid "magic" values: 32-bit, 64-bit, and fat (universal) binaries — in either endianess.
-    guard let toolData = try? Data(contentsOf: toolURL) else {
-        return .notDetermined(explanation: "Unable to read contents of the bundled helper tool")
-    }
-    let firstFourBytes = toolData.withUnsafeBytes { pointer in
-        pointer.load(fromByteOffset: 0, as: UInt32.self)
-    }
-    let validMagicValues: Set<UInt32> = [MH_MAGIC, MH_CIGAM, MH_MAGIC_64, MH_CIGAM_64, FAT_MAGIC, FAT_CIGAM]
-    guard validMagicValues.contains(firstFourBytes) else {
-        return .notSatisfied(explanation: "The bundle helper tool is not a Mach-O executable")
-    }
-    
-    return .satisfied
-}
-
-// 4
-fileprivate func assessHelperToolIsSigned(label: String) -> Assessment {
-    let toolURL = bundledHelperToolLocation(label: label)
-    
-    var code: SecStaticCode?
-    guard SecStaticCodeCreateWithPath(toolURL as CFURL, [], &code) == errSecSuccess, let code = code else {
-        return .notDetermined(explanation: "Could not create SecStaticCode for bundled helper tool")
-    }
-    
-    let result = SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSCheckAllArchitectures), nil)
-    if result == errSecSuccess {
-        return .satisfied
-    } else if result == errSecCSUnsigned {
-        return .notSatisfied(explanation: "The bundled helper tool does not have a valid signature")
-    } else {
-        return .notDetermined(explanation: "Signature checking failed with error \(result)")
-    }
-}
-
-// 5 & 6
-fileprivate func asssessHelperToolLaunchdPropertyList(label: String) -> Assessment {
-    let toolURL = bundledHelperToolLocation(label: label)
-    let data: Data
-    do {
-        data = try EmbeddedPropertyListReader.launchd.readExternal(from: toolURL)
-    } catch ReadError.sectionNotFound {
-        return .notSatisfied(explanation: "The bundled helper tool does not have an embedded launchd property list")
-    } catch {
-        return .notDetermined(explanation: "Failed trying to read the bundled helper tool's embedded launchd " +
-                                           "property list \(error)")
-    }
-    
-    // The helper tool's embedded launchd property list **must** have an entry with `Label` as the key and the
-    // value **must** be the filename of the helper tool.
-    guard let plist = try? PropertyListSerialization.propertyList(from: data,
-                                                                 options: .mutableContainersAndLeaves,
-                                                                 format: nil) as? NSDictionary else {
-        return .notSatisfied(explanation: "The data embedded as the bundled helper tool's launchd property list is " +
-                                          "not a valid property list")
-    }
-    guard let plistLabel = plist["Label"] else {
-        return .notSatisfied(explanation: "The bundled helper tool's embedded launchd property list does not have a " +
-                                          "Label key")
-    }
-    guard label == plistLabel as? String else {
-        return .notSatisfied(explanation: "The bundled helper tool's launchd property list's value for the Label key " +
-                                           "does not match the label for the bundled helper tool\n" +
-                                           "Required value: \(label)\n" +
-                                           "Actual value: \(plistLabel)")
-    }
-    
-    return .satisfied
-}
-
-// 7 & 8
-fileprivate func asssessHelperToolInfoPropertyListAuthorizedClients(label: String, type: HelperToolType) -> Assessment {
-    let toolURL: URL
-    switch type {
-        case .bundled:
-            toolURL = bundledHelperToolLocation(label: label)
-        case .installed:
-            toolURL = installedHelperToolLocation(label: label)
-            // If the helper tool isn't installed, there's nothing to check here
-            guard FileManager.default.fileExists(atPath: toolURL.path) else {
+    // 4
+    fileprivate func isSigned() -> Assessment {
+        var code: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(bundledLocation as CFURL, [], &code) == errSecSuccess, let code = code else {
+            return .notDetermined(explanation: "Could not create SecStaticCode for bundled helper tool.")
+        }
+        
+        let result = SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSCheckAllArchitectures), nil)
+        switch result {
+            case errSecSuccess:
                 return .satisfied
-            }
-    }
-    
-    // The helper tool **must** have an embedded info property list
-    let data: Data
-    do {
-        data = try EmbeddedPropertyListReader.info.readExternal(from: toolURL)
-    } catch ReadError.sectionNotFound {
-        return .notSatisfied(explanation: "The \(type.rawValue) helper tool does not have an info property list")
-    } catch {
-        return .notDetermined(explanation: "Failed trying to read the \(type.rawValue) helper tool's info property " +
-                                           "list. Error: \(error)")
-    }
-    guard let plist = try? PropertyListSerialization.propertyList(from: data,
-                                                                  options: .mutableContainersAndLeaves,
-                                                                  format: nil) as? NSDictionary else {
-        return .notSatisfied(explanation: "The data embedded as the \(type.rawValue) helper tool's info property " +
-                                          "list is not a valid property list")
-    }
-    
-    // The helper tool's embedded info property list **must** have an entry with SMAuthorizedClients as its key
-    guard let authorizedClients = plist["SMAuthorizedClients"] else {
-        return .notSatisfied(explanation: "The \(type.rawValue) helper tool's info property list does not have a " +
-                                          "SMAuthorizedClients key")
-    }
-    
-    // Its value **must** be an array of strings
-    guard let authorizedClients = authorizedClients as? [String] else {
-        return .notSatisfied(explanation: "The \(type.rawValue) helper tool's info property list's value for " +
-                                          "SMAuthorizedClients is not an array of strings")
-    }
-    
-    // Each string **must** be a code signing requirement
-    var authorizedClientRequirements = [SecRequirement]()
-    var invalidRequirementStrings = [String]()
-    for authorizedClient in authorizedClients {
-        var requirement: SecRequirement?
-        if SecRequirementCreateWithString(authorizedClient as CFString, [], &requirement) == errSecSuccess,
-              let requirement = requirement {
-            authorizedClientRequirements.append(requirement)
-        } else {
-            invalidRequirementStrings.append(authorizedClient)
+            case errSecCSUnsigned:
+                return .notSatisfied(explanation: "The bundled helper tool does not have a valid signature.")
+            default:
+                return .notDetermined(explanation: """
+                Signature checking failed.
+                Error: \(result)
+                """)
         }
     }
-    guard invalidRequirementStrings.isEmpty else {
-        var explanation = "The \(type.rawValue) helper tool's embedded info property list's value for " +
-                          "SMAuthorizedClients contains one or more strings which are not valid requirements:\n"
-        explanation += invalidRequirementStrings.joined(separator: "\n")
-        return .notSatisfied(explanation: explanation)
-    }
-    
-    // The app **must** satisify at least one of these requirements
-    var code: SecCode?
-    guard SecCodeCopySelf([], &code) == errSecSuccess, let code = code else {
-        return .notDetermined(explanation: "Could not create SecCode for this application")
-    }
-    
-    let metRequirements = authorizedClientRequirements.contains { SecCodeCheckValidity(code, [], $0) == errSecSuccess }
-    guard metRequirements else {
-        var explanation = "This application did not meet any of the \(type.rawValue) helper tool's requirements:"
-        for requirement in authorizedClientRequirements {
-            let evaluation = try? (try? Parser.parse(requirement: requirement))?.evaluateForCode(code)
-            explanation += "\n\(evaluation?.prettyDescription ?? "Failed to evaluate requirement.")"
-        }
-        return .notSatisfied(explanation: explanation)
-    }
-    
-    return .satisfied
-}
 
-// 9
-fileprivate func asssessHelperToolInfoPropertyListBundleVersion(label: String) -> Assessment {
-    let bundledToolURL = bundledHelperToolLocation(label: label)
-    
-    let data: Data
-    do {
-        data = try EmbeddedPropertyListReader.info.readExternal(from: bundledToolURL)
-    } catch ReadError.sectionNotFound {
-        return .notSatisfied(explanation: "The bundled helper tool does not have an info property list")
-    } catch {
-        return .notDetermined(explanation: "Failed trying to read the bundled helper tool's info property list. " +
-                                           "Error: \(error)")
-    }
-    guard let plist = try? PropertyListSerialization.propertyList(from: data,
-                                                                  options: .mutableContainersAndLeaves,
-                                                                  format: nil) as? NSDictionary else {
-        return .notSatisfied(explanation: "The data embedded as the bundled helper tool's info property list is not " +
-                                          "a valid property list")
-    }
-    
-    // The helper tool's embedded info property list **must** have an entry with CFBundleVersion as its key
-    guard let bundledBundleVersion = plist["CFBundleVersion"] else {
-        return .notSatisfied(explanation: "The bundled helper tool's info property list does not have a " +
-                                          "CFBundleVersion key")
-    }
-    // CFBundleVersion must be a string
-    guard let bundledBundleVersion = bundledBundleVersion as? String else {
-        return .notSatisfied(explanation: "The bundled helper tool's info property list's value for CFBundleVersion " +
-                                          "is not a string")
-    }
-    // The value for CFBundleVersion must conform to its documentation
-    guard let bundledBundleVersion = BundleVersion(rawValue: bundledBundleVersion) else {
-        return .notSatisfied(explanation: "The bundled helper tool's info property list's value for CFBundleVersion " +
-                                          "does not conform to the documented requirements.\n" +
-                                          "Value: \(bundledBundleVersion)\n" +
-        "See https://developer.apple.com/documentation/bundleresources/information_property_list/cfbundleversion")
-    }
-    
-    // If a helper tool is installed, the bundled bundle version must be greater than the installed bundle version
-    let installedHelperToolURL = installedHelperToolLocation(label: label)
-    if FileManager.default.fileExists(atPath: installedHelperToolURL.path) {
-        // The installed helper tool ought to have a info property list with a valid CFBundleVersion or it shouldn't
-        // have been installable in the first place; however, the following doesn't assume that's the case
+    // 5 & 6
+    fileprivate func launchdPropertyList() -> Assessment {
         let data: Data
         do {
-            data = try EmbeddedPropertyListReader.info.readExternal(from: installedHelperToolURL)
+            data = try EmbeddedPropertyListReader.launchd.readExternal(from: bundledLocation)
         } catch ReadError.sectionNotFound {
-            return .notSatisfied(explanation: "The installed helper tool does not have an info property list")
+            return .notSatisfied(explanation: """
+            The bundled helper tool does not have an embedded launchd property list.
+            """)
         } catch {
-            return .notDetermined(explanation: "Failed trying to read the installed helper tool's info property list. " +
-                                               "Error: \(error)")
+            return .notDetermined(explanation: """
+            Failed trying to read the bundled helper tool's embedded launchd property list.
+            Error: \(error)
+            """)
+        }
+        
+        // The helper tool's embedded launchd property list **must** have an entry with `Label` as the key and the
+        // value **must** be the filename of the helper tool.
+        guard let plist = try? PropertyListSerialization.propertyList(from: data,
+                                                                     options: .mutableContainersAndLeaves,
+                                                                     format: nil) as? NSDictionary else {
+            return .notSatisfied(explanation: """
+            The data embedded as the bundled helper tool's launchd property list is not a valid property list.
+            """)
+        }
+        guard let plistLabel = plist["Label"] else {
+            return .notSatisfied(explanation: """
+            The bundled helper tool's embedded launchd property list does not have a Label key.
+            """)
+        }
+        guard label == plistLabel as? String else {
+            return .notSatisfied(explanation:
+            """
+            The bundled helper tool's launchd property list's value for the Label key does not match the label for the \
+            bundled helper tool.
+            Required value: \(label)
+            Actual value: \(plistLabel)
+            """)
+        }
+        
+        return .satisfied
+    }
+    
+    // 7 & 8
+    fileprivate func infoPropertyListAuthorizedClients(type: HelperToolType) -> Assessment {
+        let toolURL: URL
+        switch type {
+            case .bundled:
+                toolURL = bundledLocation
+            case .installed:
+                toolURL = installedLocation
+                // If the helper tool isn't installed, there's nothing to check here
+                guard FileManager.default.fileExists(atPath: toolURL.path) else {
+                    return .satisfied
+                }
+        }
+        
+        // The helper tool **must** have an embedded info property list
+        let data: Data
+        do {
+            data = try EmbeddedPropertyListReader.info.readExternal(from: toolURL)
+        } catch ReadError.sectionNotFound {
+            return .notSatisfied(explanation: "The \(type.rawValue) helper tool does not have an info property list.")
+        } catch {
+            return .notDetermined(explanation: """
+            Failed trying to read the \(type.rawValue) helper tool's info property list.
+            Error: \(error)
+            """)
         }
         guard let plist = try? PropertyListSerialization.propertyList(from: data,
                                                                       options: .mutableContainersAndLeaves,
                                                                       format: nil) as? NSDictionary else {
-            return .notSatisfied(explanation: "The data embedded as the installed helper tool's info property list " +
-                                              "is not a valid property list")
-        }
-        guard let installedBundleVersion = plist["CFBundleVersion"] as? String else {
-            return .notSatisfied(explanation: "The installed helper tool's info property list does not have a " +
-                                              "CFBundleVersion entry")
-        }
-        guard let installedBundleVersion = BundleVersion(rawValue: installedBundleVersion) else {
-              return .notSatisfied(explanation: "The installed helper tool's info property list does not have a " +
-                                                "valid CFBundleVersion entry. Value: \(installedBundleVersion)")
+            return .notSatisfied(explanation: """
+            The data embedded as the \(type.rawValue) helper tool's info property list is not a valid property list.
+            """)
         }
         
-        guard bundledBundleVersion > installedBundleVersion else {
-            return .notSatisfied(explanation: "The bundled helper tool does not have a greater CFBundleVersion value " +
-                                              "than the installed helper tool with the label: \(label)\n" +
-                                              "Bundled: \(bundledBundleVersion.rawValue)\n" +
-                                              "Installed: \(installedBundleVersion.rawValue)")
+        // The helper tool's embedded info property list **must** have an entry with SMAuthorizedClients as its key
+        guard let clients = plist["SMAuthorizedClients"] else {
+            return .notSatisfied(explanation: """
+            The \(type.rawValue) helper tool's info property list does not have a SMAuthorizedClients key.
+            """)
         }
-    }
-    
-    return .satisfied
-}
-
-// 10
-fileprivate func asssessAppInfoPropertyList(label: String) -> Assessment {
-    guard let infoDictionary = Bundle.main.infoDictionary else {
-        return .notSatisfied(explanation: "This application does not have an Info.plist")
-    }
-    
-    // The app's info property list **must** have an entry with SMPrivilegedExecutables as its key
-    guard let privilegedExecutables = infoDictionary["SMPrivilegedExecutables"] else {
-        return .notSatisfied(explanation: "This application's info property list does not have a " +
-                                          "SMPrivilegedExecutables key")
-    }
-    
-    // Its value **must** be a dictionary of strings to strings
-    guard let privilegedExecutables = privilegedExecutables as? [String : String] else {
-        return .notSatisfied(explanation: "This application's info property list's value for SMPrivilegedExecutables " +
-                                          "is not a dictionary of strings to strings")
-    }
-    
-    // There must be an entry for the specified helper tool
-    guard let requirementString = privilegedExecutables[label] else {
-        return .notSatisfied(explanation: "This application's info property list's value for SMPrivilegedExecutables " +
-                                          "does not contain a key for the label: \(label)")
-    }
-    
-    // If the SecRequirement can't be created (compiled), then it's not valid
-    var requirement: SecRequirement?
-    guard SecRequirementCreateWithString(requirementString as CFString, [], &requirement) == errSecSuccess,
-          let requirement = requirement else {
-        return .notSatisfied(explanation: "This application's code signing requirement for the helper tool is not " +
-                                          "valid. This is independent of whether the helper tool satisifies the code " +
-                                          "signing requirement.\n" +
-                                          "Invalid requirement: \(requirementString)")
-    }
-    
-    // Get the bundled tool and see if it satisfies this requirement
-    let bundledToolURL = bundledHelperToolLocation(label: label)
-    var bundledStaticCode: SecStaticCode?
-    guard SecStaticCodeCreateWithPath(bundledToolURL as CFURL, [], &bundledStaticCode) == errSecSuccess,
-          let bundledStaticCode = bundledStaticCode else {
-        return .notDetermined(explanation: "Could not create SecStaticCode for bundled helper tool")
-    }
-    let flags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures)
-    let result = SecStaticCodeCheckValidity(bundledStaticCode, flags, requirement)
-    if result == errSecSuccess {
+        
+        // Its value **must** be an array of strings
+        guard let clients = clients as? [String] else {
+            return .notSatisfied(explanation: """
+            The \(type.rawValue) helper tool's info property list's value for SMAuthorizedClients is not an array of \
+            strings.
+            """)
+        }
+        
+        // Each string **must** be a code signing requirement
+        var clientRequirements = [SecRequirement]()
+        var invalidRequirementStrings = [String]()
+        for client in clients {
+            var requirement: SecRequirement?
+            if SecRequirementCreateWithString(client as CFString, [], &requirement) == errSecSuccess,
+               let requirement = requirement {
+                clientRequirements.append(requirement)
+            } else {
+                invalidRequirementStrings.append(client)
+            }
+        }
+        guard invalidRequirementStrings.isEmpty else {
+            return .notSatisfied(explanation: """
+            The \(type.rawValue) helper tool's embedded info property list's value for SMAuthorizedClients contains \
+            one or more strings which are not valid requirements:
+            \(invalidRequirementStrings.joined(separator: "\n"))
+            """)
+        }
+        
+        // The app **must** satisify at least one of these requirements
+        var code: SecCode?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code = code else {
+            return .notDetermined(explanation: "Could not create SecCode for this application.")
+        }
+        
+        let metRequirements = clientRequirements.contains { SecCodeCheckValidity(code, [], $0) == errSecSuccess }
+        guard metRequirements else {
+            let intro = """
+            This application did not meet any of the \(type.rawValue) helper tool's code signing requirements:
+            """
+            let explanation = clientRequirements.reduce(into: intro) { explanation, requirement in
+                let eval = try? (try? Parser.parse(requirement: requirement))?.evaluateForCode(code)
+                explanation += "\n\(eval?.prettyDescription ?? "Failed to evaluate requirement.")"
+            }
+            
+            return .notSatisfied(explanation: explanation)
+        }
+        
         return .satisfied
-    } else if result == errSecCSReqFailed {
-        let evaluation = try? (try? Parser.parse(requirement: requirement))?.evaluateForStaticCode(bundledStaticCode)
-        let explanation = "The bundled helper tool does not meet the application's code signing requirement for it:\n" +
-                          "\(evaluation?.prettyDescription ?? "Failed to evaluate requirement.")"
+    }
+    
+    // 9
+    fileprivate func infoPropertyListBundleVersion() -> Assessment {
+        let data: Data
+        do {
+            data = try EmbeddedPropertyListReader.info.readExternal(from: bundledLocation)
+        } catch ReadError.sectionNotFound {
+            return .notSatisfied(explanation: "The bundled helper tool does not have an info property list.")
+        } catch {
+            return .notDetermined(explanation: """
+            Failed trying to read the bundled helper tool's info property list.
+            Error: \(error)
+            """)
+        }
+        guard let plist = try? PropertyListSerialization.propertyList(from: data,
+                                                                      options: .mutableContainersAndLeaves,
+                                                                      format: nil) as? NSDictionary else {
+            return .notSatisfied(explanation: """
+            The data embedded as the bundled helper tool's info property list is not a valid property list.
+            """)
+        }
         
-        return .notSatisfied(explanation: explanation)
-    }else {
-        return .notDetermined(explanation: "Signature checking failed with error \(result)")
+        // The helper tool's embedded info property list **must** have an entry with CFBundleVersion as its key
+        guard let bundledBundleVersion = plist["CFBundleVersion"] else {
+            return .notSatisfied(explanation: """
+            The bundled helper tool's info property list does not have a CFBundleVersion key.
+            """)
+        }
+        // CFBundleVersion must be a string
+        guard let bundledBundleVersion = bundledBundleVersion as? String else {
+            return .notSatisfied(explanation: """
+            The bundled helper tool's info property list's value for CFBundleVersion is not a string."
+            """)
+        }
+        // The value for CFBundleVersion must conform to its documentation
+        guard let bundledBundleVersion = BundleVersion(rawValue: bundledBundleVersion) else {
+            return .notSatisfied(explanation: """
+            The bundled helper tool's info property list's value for CFBundleVersion does not conform to the \
+            documented requirements.
+            Value: \(bundledBundleVersion)
+            See https://developer.apple.com/documentation/bundleresources/information_property_list/cfbundleversion
+            """)
+        }
+        
+        // If a helper tool is installed, the bundled bundle version must be greater than the installed bundle version
+        if FileManager.default.fileExists(atPath: installedLocation.path) {
+            // The installed helper tool ought to have a info property list with a valid CFBundleVersion or it shouldn't
+            // have been installable in the first place; however, the following doesn't assume that's the case
+            let data: Data
+            do {
+                data = try EmbeddedPropertyListReader.info.readExternal(from: installedLocation)
+            } catch ReadError.sectionNotFound {
+                return .notSatisfied(explanation: "The installed helper tool does not have an info property list.")
+            } catch {
+                return .notDetermined(explanation: """
+                Failed trying to read the installed helper tool's info property list.
+                Error: \(error)
+                """)
+            }
+            guard let plist = try? PropertyListSerialization.propertyList(from: data,
+                                                                          options: .mutableContainersAndLeaves,
+                                                                          format: nil) as? NSDictionary else {
+                return .notSatisfied(explanation: """
+                The data embedded as the installed helper tool's info property list is not a valid property list
+                """)
+            }
+            guard let installedBundleVersion = plist["CFBundleVersion"] as? String else {
+                return .notSatisfied(explanation: """
+                The installed helper tool's info property list does not have a CFBundleVersion entry.
+                """)
+            }
+            guard let installedBundleVersion = BundleVersion(rawValue: installedBundleVersion) else {
+                return .notSatisfied(explanation: """
+                The installer helper tool's info property list's value for CFBundleVersion does not conform to the \
+                documented requirements.
+                Value: \(installedBundleVersion)
+                See https://developer.apple.com/documentation/bundleresources/information_property_list/cfbundleversion
+                """)
+            }
+            
+            guard bundledBundleVersion > installedBundleVersion else {
+                return .notSatisfied(explanation: """
+                The bundled helper tool does not have a greater CFBundleVersion value than the installed helper tool \
+                with the label: \(label)
+                Bundled version: \(bundledBundleVersion.rawValue)
+                Installed version: \(installedBundleVersion.rawValue)
+                """)
+            }
+        }
+        
+        return .satisfied
     }
 }
 
-// MARK: Helper functions
+fileprivate struct AppAssessor {
+    // 1
+    fileprivate func isSigned() -> Assessment {
+        var code: SecCode?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code = code else {
+            return .notDetermined(explanation: "Could not create SecCode for this application.")
+        }
+        
+        let result = SecCodeCheckValidity(code, [], nil)
+        switch result {
+            case errSecSuccess:
+                return .satisfied
+            case errSecCSUnsigned:
+                return .notSatisfied(explanation: "This application does not have a valid signature.")
+            default:
+                return .notDetermined(explanation: """
+                Signature checking failed.
+                Error: \(result)
+                """)
+        }
+    }
 
-fileprivate func bundledHelperToolLocation(label: String) -> URL {
-    Bundle.main.bundleURL.appendingPathComponent("Contents")
-                         .appendingPathComponent("Library")
-                         .appendingPathComponent("LaunchServices")
-                         .appendingPathComponent(label)
-}
-
-fileprivate func installedHelperToolLocation(label: String) -> URL {
-    URL(fileURLWithPath: "/Library/PrivilegedHelperTools/\(label)")
+    // 10
+    fileprivate func infoPropertyList(bundledHelperToolLocation: URL, label: String) -> Assessment {
+        guard let infoDictionary = Bundle.main.infoDictionary else {
+            return .notSatisfied(explanation: "This application does not have an info property list.")
+        }
+        
+        // The app's info property list **must** have an entry with SMPrivilegedExecutables as its key
+        guard let privilegedExecutables = infoDictionary["SMPrivilegedExecutables"] else {
+            return .notSatisfied(explanation: """
+            This application's info property list does not have a SMPrivilegedExecutables key.
+            """)
+        }
+        
+        // Its value **must** be a dictionary of strings to strings
+        guard let privilegedExecutables = privilegedExecutables as? [String : String] else {
+            return .notSatisfied(explanation: """
+            This application's info property list's value for SMPrivilegedExecutables is not a dictionary of strings \
+            to strings.
+            """)
+        }
+        
+        // There must be an entry for the specified helper tool
+        guard let requirementString = privilegedExecutables[label] else {
+            return .notSatisfied(explanation: """
+            This application's info property list's value for SMPrivilegedExecutables does not contain a key for the \
+            label: \(label)
+            """)
+        }
+        
+        // If the SecRequirement can't be created (compiled), then it's not valid
+        var requirement: SecRequirement?
+        guard SecRequirementCreateWithString(requirementString as CFString, [], &requirement) == errSecSuccess,
+              let requirement = requirement else {
+            return .notSatisfied(explanation: """
+            This application's code signing requirement for the helper tool is not valid. This is independent of \
+            whether the helper tool satisifies the code signing requirement.
+            Invalid requirement: \(requirementString)
+            """)
+        }
+        
+        // Get the bundled tool and see if it satisfies this requirement
+        var bundledStaticCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(bundledHelperToolLocation as CFURL, [], &bundledStaticCode) == errSecSuccess,
+              let bundledStaticCode = bundledStaticCode else {
+            return .notDetermined(explanation: "Could not create SecStaticCode for bundled helper tool.")
+        }
+        let flags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures)
+        let result = SecStaticCodeCheckValidity(bundledStaticCode, flags, requirement)
+        switch result {
+            case errSecSuccess:
+                return .satisfied
+            case errSecCSReqFailed:
+                let eval = try? (try? Parser.parse(requirement: requirement))?.evaluateForStaticCode(bundledStaticCode)
+                
+                return .notSatisfied(explanation: """
+                The bundled helper tool does not meet the application's code signing requirement for it:
+                \(eval?.prettyDescription ?? "Failed to evaluate requirement: \(requirementString)")
+                """)
+            default:
+                return .notDetermined(explanation: """
+                Signature checking failed.
+                Error: \(result)
+                """)
+        }
+    }
 }
