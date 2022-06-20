@@ -31,12 +31,17 @@ On macOS 10.15 and later this functionality is also available as an `async` vari
 ``LaunchdManager/authorizeAndBless(message:icon:)-9guaa`` which will not block while waiting for a user to grant (or
 decline) authorization. 
 
+One of the most challenging aspects of using `SMJobBless` is that when it fails, it can be very hard to determine _why_.
+To assist your debugging of such situations, this package throws a ``BlessError`` which provides a detailed explanation
+for each bless requirement which was not met.
+
 ## Defining Custom Rights
 macOS's authorization system is built around the concept of rights. The Policy Database contains definitions for all of
 the rights on the system and your application can add its own.
 
 If an application defines its own rights it can then use these to self-restrict functionality. For details on *why* you
-might want to do see, consider reading Apple's [Technical Note TN2095: Authorization for Everyone](https://developer.apple.com/library/archive/technotes/tn2095/_index.html#//apple_ref/doc/uid/DTS10003110)
+might want to do see, consider reading Apple's
+ [Technical Note TN2095: Authorization for Everyone](https://developer.apple.com/library/archive/technotes/tn2095/_index.html#//apple_ref/doc/uid/DTS10003110)
 although keep in mind the code samples shown are not applicable if you are using this Swift implementation.
 
 To define a custom right:
@@ -58,7 +63,8 @@ There are several optional parameters not used in this example, see
 details.
 
 If you need to create a rule which is not solely composed of already existing rules, you must create an authorization
-plug-in, which is not covered by this framework. See [Using Authorization Plug-ins](https://developer.apple.com/documentation/security/authorization_plug-ins/using_authorization_plug-ins)
+plug-in, which is not covered by this framework. See
+ [Using Authorization Plug-ins](https://developer.apple.com/documentation/security/authorization_plug-ins/using_authorization_plug-ins)
 for more information.
 
 ## Authorization
@@ -107,4 +113,5 @@ If you need to determine at run time if your process is sandboxed, this framewor
 - ``AuthorizationError``
 ### launchd Registration
 - ``LaunchdManager``
+- ``BlessError``
 - ``LaunchdError``

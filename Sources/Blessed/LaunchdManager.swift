@@ -32,25 +32,23 @@ public struct LaunchdManager {
     ///
     /// In order to successfully use this function the following requirements must be met:
     /// 1. The app calling this function **must** be signed.
-    /// 2. The helper tool **must** be an executable, not an app bundle.
-    /// 3. The helper tool **must** be signed.
-    /// 4. The helper tool **must** be located in the `Contents/Library/LaunchServices` directory inside the app's bundle.
-    /// 5. The filename of the helper tool **should** be reverse-DNS format.
-    ///    - If the app has the bundle identifier "com.example.SwiftAuthorizationApp" then the helper tool **may** have a filename of
-    ///      "com.example.SwiftAuthorizationApp.helper".
-    /// 6. The helper tool **must** have an embedded launchd property list.
-    /// 7. The helper tool's embedded launchd property list **must** have an entry with `Label` as the key and the value **must** be the filename of the
+    /// 2. The helper tool **must** be located in the `Contents/Library/LaunchServices` directory inside the app's bundle.
+    /// 3. The helper tool **must** be an executable, not an app bundle.
+    /// 4. The helper tool **must** be signed.
+    /// 5. The helper tool **must** have an embedded launchd property list.
+    /// 6. The helper tool's embedded launchd property list **must** have an entry with `Label` as the key and the value **must** be the filename of the
     ///   helper tool.
-    /// 8. The helper tool **must** have an embedded info property list.
-    /// 9. The helper tool's embedded info property list **must** have an entry with
+    /// 7. The helper tool **must** have an embedded info property list.
+    /// 8. The helper tool's embedded info property list **must** have an entry with
     ///   [`SMAuthorizedClients`](https://developer.apple.com/documentation/bundleresources/information_property_list/smauthorizedclients)
     ///   as its key and its value **must** be an array of strings. Each string **must** be a
     ///   [code signing requirement](https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/RequirementLang/RequirementLang.html).
     ///   The app **must** satisify at least one of these requirements.
-    ///    - Only processes which meet one or more of these requirements may install or update the helper tool.
-    ///    - These requirements are *only* about which processes may install or update the helper tool. They impose no restrictions on which processes can
-    ///      communicate with the helper tool.
-    /// 10. The helper tool's embedded info property list **must** have an entry with
+    ///    - The app must satisify one or more of these requirements to install or update the helper tool.
+    ///        - To update the helper tool, the app must satisfy one or more requirements of both the installed helper tool and the bundled helper tool.
+    ///    - These requirements are *only* about whether an app can install or update the helper tool. They impose no restrictions on communication with the
+    ///      helper tool.
+    /// 9. The helper tool's embedded info property list **must** have an entry with
     ///    [`CFBundleVersion`](https://developer.apple.com/documentation/bundleresources/information_property_list/cfbundleversion)
     ///    as its key and its value **must** be a string matching the format described in `CFBundleVersion`'s documentation.
     ///     - This requirement is *not* documented by Apple, but is enforced.
@@ -58,29 +56,34 @@ public struct LaunchdManager {
     ///       value for its `CFBundleVersion` entry.
     ///     - Despite Apple requiring the info property list contain a key named `CFBundleVersion`, the helper tool **must** be a Command Line Tool and
     ///       **must not** be a bundle.
-    /// 11. The app's Info.plist **must** have an entry with
+    /// 10. The app's Info.plist **must** have an entry with
     ///    [`SMPrivilegedExecutables`](https://developer.apple.com/documentation/bundleresources/information_property_list/smprivilegedexecutables)
     ///    as its key and its value must be a dictionary. Each dictionary key **must** be a helper tool's filename; for example
     ///    "com.example.SwiftAuthorizationApp.helper". Each dictionary value **must** be a string representation of a code signing requirement that the helper
     ///    tool satisfies.
+    ///
+    /// In addition to the above requirements, the filename of the helper tool **should** be reverse-DNS format. For example, if the app has the bundle identifier
+    /// "com.example.SwiftAuthorizationApp" then the helper tool **may** have a filename of "com.example.SwiftAuthorizationApp.helper".
     ///
     /// - Parameters:
     ///   - label: The label of the helper tool executable to install. This label must be one of the keys found in the
     ///  [`SMPrivilegedExecutables`](https://developer.apple.com/documentation/bundleresources/information_property_list/smprivilegedexecutables)
     ///    dictionary in this app's Info.plist.
     ///   - authorization: An authorization containing the  ``AuthorizationRight/blessPrivilegedHelper`` right.
-    /// - Throws: ``LaunchdError`` if unable to bless.
+    /// - Throws: ``BlessError`` if unable to bless.
     public static func bless(label: String, authorization: Authorization) throws {
         var unmanagedError: Unmanaged<CFError>?
         let result = SMJobBless(kSMDomainSystemLaunchd,
                                 label as CFString,
                                 authorization.authorizationRef,
                                 &unmanagedError)
-        if let error = unmanagedError?.takeUnretainedValue() {
-            defer { unmanagedError?.release() }
-            throw LaunchdError.fromError(originalError: error)
-        } else if !result {
-            throw LaunchdError.blessFailure
+        
+        if let error = unmanagedError?.takeRetainedValue() {
+            throw BlessError(underlyingError: error, label: label, authorization: authorization)
+        }
+        
+        guard result else {
+            throw BlessError(underlyingError: nil, label: label, authorization: authorization)
         }
     }
     
