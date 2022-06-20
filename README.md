@@ -17,7 +17,8 @@ To assist your debugging of such situations, this package throws a `BlessError` 
 for each bless requirement which was not met.
 
 To see a runnable sample app using this framework, check out
-[SwiftAuthorizationSample](https://github.com/trilemma-dev/SwiftAuthorizationSample) which also makes use of [SecureXPC](https://github.com/trilemma-dev/SecureXPC/) for secure interprocess communication.
+[SwiftAuthorizationSample](https://github.com/trilemma-dev/SwiftAuthorizationSample) which also makes use of
+[SecureXPC](https://github.com/trilemma-dev/SecureXPC/) for secure interprocess communication.
 
 [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Ftrilemma-dev%2FBlessed%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/trilemma-dev/Blessed)
 
@@ -48,7 +49,8 @@ macOS's authorization system is built around the concept of rights. The Policy D
 the rights on the system and your application can add its own.
 
 If an application defines its own rights it can then use these to self-restrict functionality. For details on *why* you
-might want to do see, consider reading Apple's [Technical Note TN2095: Authorization for Everyone](https://developer.apple.com/library/archive/technotes/tn2095/_index.html#//apple_ref/doc/uid/DTS10003110)
+might want to do see, consider reading Apple's
+[Technical Note TN2095: Authorization for Everyone](https://developer.apple.com/library/archive/technotes/tn2095/_index.html#//apple_ref/doc/uid/DTS10003110)
 although keep in mind the code samples shown are not applicable if you are using this Swift implementation.
 
 To define a custom right:

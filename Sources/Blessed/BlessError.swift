@@ -8,6 +8,7 @@
 import Foundation
 import EmbeddedPropertyList
 import Required
+import ServiceManagement
 
 /// An error thrown when ``LaunchdManager/bless(label:authorization:)`` fails.
 ///
@@ -16,6 +17,7 @@ import Required
 /// - ``description``
 /// - ``underlyingError``
 public struct BlessError: Error {
+    private let label: String
     private let assessments: [Assessment]
     
     /// The original error, if present, provided by the Service Management framework.
@@ -23,6 +25,7 @@ public struct BlessError: Error {
     
     init(underlyingError: CFError?, label: String, authorization: Authorization) {
         self.underlyingError = underlyingError
+        self.label = label
         
         let toolAssessor = HelperToolAssessor(label: label)
         let appAssessor = AppAssessor()
@@ -69,7 +72,9 @@ extension BlessError: CustomStringConvertible {
                     return "\(index + 1). \(assessment)"
                 }.joined(separator: "\n")
             }
-        } else if !notDeterminedAssessments.isEmpty {
+        } else if !notDeterminedAssessments.isEmpty { // Only use these if there are no notSatisified assessments
+                                                      // because many failures to determine are a result of not being
+                                                      // satisfied (like there being no property list)
             if notDeterminedAssessments.count == 1, let assessment = notDeterminedAssessments.first {
                 message += "Bless failed and the following requirement could not be determined:\n"
                 message += assessment
@@ -81,7 +86,9 @@ extension BlessError: CustomStringConvertible {
                     return "\(index + 1). \(assessment)"
                 }.joined(separator: "\n")
             }
-        } else { // TODO: handle some of the specific values for underlyingError to reduce this happening
+        } else if let error = underlyingError, let description = assessUnderlyingError(error, label: self.label) {
+            message += description
+        } else {
             message += "Bless failed, but no specific unmet requirements were determined."
         }
         
@@ -93,6 +100,34 @@ extension BlessError: CustomStringConvertible {
     }
 }
 
+// MARK: Interpretation of CFError
+
+fileprivate func assessUnderlyingError(_ error: CFError, label: String) -> String? {
+    guard CFErrorGetDomain(error) as String? == "CFErrorDomainLaunchd", let code = CFErrorGetCode(error) as Int? else {
+        return "Bless failed, but the underlying error is not part of the Launchd domain or has no error code."
+    }
+
+    // All but two of these error codes are already comprehensively handled by the assessments of the bless requirements
+    // done elsewhere in this file and therefore aren't seperately handled here.
+    
+    // 1. This isn't directly about the bundled *or* installed helper tool, but about its status with launchd itself.
+    if code == kSMErrorJobMustBeEnabled {
+        return """
+        Bless failed because the helper tool is on the permanently disabled services list. This list can be queried \
+        via `launchctl print-disabled system`.
+        
+        This disabled helper tool can be reenabled via `sudo launchctl enable system/\(label)`.
+        """
+    }
+    
+    // 2. In theory the other useful error code is kSMErrorAuthorizationFailure which according to documentation should
+    // be returned if the AuthorizationRef doesn't contain the needed right. However, in practice this error is
+    // returned for all sorts of unrelated situations like the application not meeting the code signing requirements
+    // specified by the helper tool.
+    
+    return nil
+}
+
 // MARK: Assessment of bless requirements
 
 private enum Assessment {
@@ -102,7 +137,8 @@ private enum Assessment {
 }
 
 
-// The numbers in front of each function corresponds to the requirements described in LaunchdManager.bless(...)
+// The numbers in front of each function corresponds to the requirements described in LaunchdManager.bless(...) and most
+// of the comments within each function are portions of these requirements
 
 
 fileprivate struct HelperToolAssessor {
@@ -113,16 +149,16 @@ fileprivate struct HelperToolAssessor {
     }
     
     let label: String
+    let bundledLocation: URL
+    let installedLocation: URL
     
-    var bundledLocation: URL {
-        Bundle.main.bundleURL.appendingPathComponent("Contents")
-                             .appendingPathComponent("Library")
-                             .appendingPathComponent("LaunchServices")
-                             .appendingPathComponent(label)
-    }
-
-    var installedLocation: URL {
-        URL(fileURLWithPath: "/Library/PrivilegedHelperTools/\(label)")
+    init(label: String) {
+        self.label = label
+        self.bundledLocation = Bundle.main.bundleURL.appendingPathComponent("Contents")
+                                                    .appendingPathComponent("Library")
+                                                    .appendingPathComponent("LaunchServices")
+                                                    .appendingPathComponent(label)
+        self.installedLocation = URL(fileURLWithPath: "/Library/PrivilegedHelperTools/\(label)")
     }
     
     // 2 & 3
