@@ -1,32 +1,30 @@
 //
-//  LaunchdManager.swift
+//  PrivilegedHelperManager.swift
 //  Blessed
 //
 //  Created by Josh Kaplan on 2021-10-21
 //
 
+import Authorized
 import Foundation
 import ServiceManagement
 
-/// Register launchd services.
-///
-/// Functionality is provided to:
-///  - install (bless) privileged helper tools which will run as root
-///  - enable or disable bundles to run as login items
+/// Functions for blessing priviliged helper tools.
 ///
 /// This functionality has exacting requirements in order for them to succeed; closely read each function's documentation.
 ///
 /// ## Topics
-/// ### Privileged Helper Tools
-/// - ``authorizeAndBless(message:icon:)-9guaa``
-/// - ``authorizeAndBless(message:icon:)-4qvn1``
-/// - ``bless(label:authorization:)``
-/// ### Login Items
-/// - ``enableLoginItem(forBundleIdentifier:)``
-/// - ``disableLoginItem(forBundleIdentifier:)``
-public struct LaunchdManager {
+/// ### Authorize & Bless
+/// - ``authorizeAndBless(message:icon:)-1ztfe``
+/// - ``authorizeAndBless(message:icon:)-7bz4p``
+/// ### Bless
+///  - ``bless(label:authorization:)``
+public class PrivilegedHelperManager {
     
     private init() { }
+    
+    /// The shared privileged helper manager for the process.
+    public static var shared = PrivilegedHelperManager()
     
     /// Submits a privileged helper tool as a launchd job.
     ///
@@ -69,9 +67,9 @@ public struct LaunchdManager {
     ///   - label: The label of the helper tool executable to install. This label must be one of the keys found in the
     ///  [`SMPrivilegedExecutables`](https://developer.apple.com/documentation/bundleresources/information_property_list/smprivilegedexecutables)
     ///    dictionary in this app's Info.plist.
-    ///   - authorization: An authorization containing the  ``AuthorizationRight/blessPrivilegedHelper`` right.
+    ///   - authorization: An authorization containing the  `AuthorizationRight.blessPrivilegedHelper` right.
     /// - Throws: ``BlessError`` if unable to bless.
-    public static func bless(label: String, authorization: Authorization) throws {
+    public func bless(label: String, authorization: Authorization) throws {
         var unmanagedError: Unmanaged<CFError>?
         let result = SMJobBless(kSMDomainSystemLaunchd,
                                 label as CFString,
@@ -84,31 +82,6 @@ public struct LaunchdManager {
         
         guard result else {
             throw BlessError(underlyingError: nil, label: label, authorization: authorization)
-        }
-    }
-    
-    /// Enables a helper tool in the main app bundle’s `Contents/Library/LoginItems` directory.
-    ///
-    /// This is effective only for the currently logged-in user. If this function returns successfully, the helper tool starts immediately (and upon subsequent logins)
-    /// and keeps running.
-    ///
-    /// - Parameter forBundleIdentifier: Bundle identifier for the helper tool.
-    /// - Throws: If unable to successfully enable the login item.
-    public static func enableLoginItem(forBundleIdentifier identifier: String) throws {
-        if !SMLoginItemSetEnabled(identifier as CFString, true) {
-            throw LaunchdError.loginItemNotEnabled
-        }
-    }
-    
-    /// Disables a helper tool in the main app bundle’s `Contents/Library/LoginItems` directory.
-    ///
-    /// This is effective only for the currently logged-in user. If this function returns successfully, the helper tool stop immediately.
-    ///
-    /// - Parameter forBundleIdentifier: Bundle identifier for the helper tool.
-    /// - Throws: If unable to successfully disable the login item.
-    public static func disableLoginItem(forBundleIdentifier identifier: String) throws {
-        if !SMLoginItemSetEnabled(identifier as CFString, false) {
-            throw LaunchdError.loginItemNotDisabled
         }
     }
     
@@ -150,13 +123,13 @@ public struct LaunchdManager {
         }
         
         func bless() throws {
-            if let executables = Bundle.main.infoDictionary?["SMPrivilegedExecutables"] as? [String : String],
-               executables.count == 1,
-               let firstExecutable = executables.first?.key {
-                try LaunchdManager.bless(label: firstExecutable, authorization: self.authorization)
-            } else {
-                throw LaunchdError.invalidExecutablesDictionary
+            guard let executables = Bundle.main.infoDictionary?["SMPrivilegedExecutables"] as? [String : String],
+                  executables.count == 1,
+                  let firstExecutable = executables.first?.key else {
+               fatalError("SMPrivilegedExecutables must have exactly one entry")
             }
+            
+            try PrivilegedHelperManager.shared.bless(label: firstExecutable, authorization: self.authorization)
         }
     }
     
@@ -164,16 +137,16 @@ public struct LaunchdManager {
     /// [`SMPrivilegedExecutables`](https://developer.apple.com/documentation/bundleresources/information_property_list/smprivilegedexecutables)
     /// as a launchd job.
     ///
-    /// See ``Authorization/requestRights(_:environment:options:)-5wtuy`` and ``bless(label:authorization:)`` for details
-    /// on this function's behavior as both are called internally.
+    /// See `Authorization.requestRights(_:environment:options:)` and ``bless(label:authorization:)`` for details on this function's
+    /// behavior as both are called internally.
     ///
-    /// Tthe value for `bless`'s `label` parameter is determined as the key for the first entry in `SMPrivilegedExecutables` if this dictionary contains
-    /// exactly one entry. Otherwise  ``LaunchdError/invalidExecutablesDictionary`` will be thrown.
+    /// The value for `bless`'s `label` parameter is determined as the key for the first entry in `SMPrivilegedExecutables` if this dictionary contains
+    /// exactly one entry, otherwise it is a programming error to call this function.
     ///
     /// - Parameters:
     ///   - message: Optional message shown to the user as part of the macOS authentication dialog.
     ///   - icon: Optional file path to an image file loadable by `NSImage` which will be shown to the user as part of the macOS authentication dialog.
-    public static func authorizeAndBless(message: String? = nil, icon: URL? = nil) throws {
+    public func authorizeAndBless(message: String? = nil, icon: URL? = nil) throws {
         let config = try AuthorizeAndBless(message: message, icon: icon)
         try config.requestRights()
         try config.bless()
@@ -183,17 +156,17 @@ public struct LaunchdManager {
     /// [`SMPrivilegedExecutables`](https://developer.apple.com/documentation/bundleresources/information_property_list/smprivilegedexecutables)
     /// as a launchd job.
     ///
-    /// See ``Authorization/requestRights(_:environment:options:callback:)`` and ``bless(label:authorization:)`` for
-    /// details on this function's behavior as both are called internally.
+    /// See `Authorization.requestRights(_:environment:options:callback:)` and ``bless(label:authorization:)`` for details on
+    /// this function's behavior as both are called internally.
     ///
-    /// Tthe value for `bless`'s `label` parameter is determined as the key for the first entry in `SMPrivilegedExecutables` if this dictionary contains
-    /// exactly one entry. Otherwise  ``LaunchdError/invalidExecutablesDictionary`` will be thrown.
+    /// The value for `bless`'s `label` parameter is determined as the key for the first entry in `SMPrivilegedExecutables` if this dictionary contains
+    /// exactly one entry, otherwise it is a programming error to call this function.
     ///
     /// - Parameters:
     ///   - message: Optional message shown to the user as part of the macOS authentication dialog.
     ///   - icon: Optional file path to an image file loadable by `NSImage` which will be shown to the user as part of the macOS authentication dialog.
     @available(macOS 10.15.0, *)
-    public static func authorizeAndBless(message: String? = nil, icon: URL? = nil) async throws {
+    public func authorizeAndBless(message: String? = nil, icon: URL? = nil) async throws {
         let config = try AuthorizeAndBless(message: message, icon: icon)
         try await config.requestRights()
         try config.bless()

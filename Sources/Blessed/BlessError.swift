@@ -5,12 +5,13 @@
 //  Created by Josh Kaplan on 2022-06-10
 //
 
+import Authorized
 import Foundation
 import EmbeddedPropertyList
 import Required
 import ServiceManagement
 
-/// An error thrown when ``LaunchdManager/bless(label:authorization:)`` fails.
+/// An error thrown when blessing fails.
 ///
 /// ## Topics
 /// ### Error Info
@@ -93,7 +94,7 @@ extension BlessError: CustomStringConvertible {
         }
         
         if let underlyingError = underlyingError {
-            message += "\nUnderlying error: \(underlyingError)"
+            message += "\n\nUnderlying error: \(underlyingError)"
         }
             
         return message
