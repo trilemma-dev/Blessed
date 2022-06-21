@@ -42,7 +42,7 @@ To see a runnable sample app using this framework, check out
 ## macOS 13 and later
 Starting with macOS 13, Apple recommends you use
 [SMAppService](https://developer.apple.com/documentation/servicemanagement/smappservice) instead to register a
-LaunchDaemon.
+Launch Daemon.
 
 ## Advanced Use Cases
 If you have a need to seperately obtain authorization and then bless, you'll want to make direct use of the
