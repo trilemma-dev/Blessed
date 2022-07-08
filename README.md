@@ -40,7 +40,7 @@ To see a runnable sample app using this framework, check out
 [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Ftrilemma-dev%2FBlessed%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/trilemma-dev/Blessed)
 
 ## macOS 13 and later
-Starting with macOS 13, Apple recommends you use
+If your minimum deployment target is macOS 13 or later, Apple recommends you use
 [SMAppService](https://developer.apple.com/documentation/servicemanagement/smappservice) instead to register a
 Launch Daemon.
 
